@@ -107,8 +107,11 @@ def _grid_from_X(X, percentiles, grid_resolution):
     return cartesian(values), values
 
 
-def _partial_dependence_recursion(est, grid, features):
-    averaged_predictions = est._compute_partial_dependence_recursion(grid, features)
+def _partial_dependence_recursion(est, grid, features, sample_weight):
+    if sample_weight is not None:
+        print('modify pd_recursion here')  # todo
+    else:
+        averaged_predictions = est._compute_partial_dependence_recursion(grid, features)
     if averaged_predictions.ndim == 1:
         # reshape to (1, n_points) for consistency with
         # _partial_dependence_brute
@@ -117,7 +120,7 @@ def _partial_dependence_recursion(est, grid, features):
     return averaged_predictions
 
 
-def _partial_dependence_brute(est, grid, features, X, response_method):
+def _partial_dependence_brute(est, grid, features, X, response_method, sample_weight):
 
     predictions = []
     averaged_predictions = []
@@ -166,8 +169,13 @@ def _partial_dependence_brute(est, grid, features, X, response_method):
             pred = prediction_method(X_eval)
 
             predictions.append(pred)
-            # average over samples
-            averaged_predictions.append(np.mean(pred, axis=0))
+            if sample_weight is not None:
+                # todo: test for matrix of sample weights
+                # predictions.append(pred*sample_weight.values.reshape(X.shape[0], 1))
+                averaged_predictions.append(np.average(pred, weights=sample_weight, axis=0))
+            else:
+                # average over samples
+                averaged_predictions.append(np.mean(pred, axis=0))
         except NotFittedError as e:
             raise ValueError("'estimator' parameter must be a fitted estimator") from e
 
@@ -216,6 +224,7 @@ def partial_dependence(
     grid_resolution=100,
     method="auto",
     kind="legacy",
+    sample_weight=None
 ):
     """Partial dependence of ``features``.
 
@@ -320,6 +329,8 @@ def partial_dependence(
             `kind='legacy'` is deprecated and will be removed in version 1.1.
             `kind='average'` will be the new default. It is intended to migrate
             from the ndarray output to :class:`~sklearn.utils.Bunch` output.
+
+    sample_weight: 1-d series of row weights used for sample.
 
 
     Returns
@@ -495,7 +506,7 @@ def partial_dependence(
 
     if method == "brute":
         averaged_predictions, predictions = _partial_dependence_brute(
-            estimator, grid, features_indices, X, response_method
+            estimator, grid, features_indices, X, response_method, sample_weight
         )
 
         # reshape predictions to
@@ -505,7 +516,7 @@ def partial_dependence(
         )
     else:
         averaged_predictions = _partial_dependence_recursion(
-            estimator, grid, features_indices
+            estimator, grid, features_indices, sample_weight
         )
 
     # reshape averaged_predictions to
